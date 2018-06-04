@@ -1,5 +1,5 @@
 # ![MemoryUsed](./resources/32x32-normal.png) Fusion 360 - Memory Used
-An add-in that displays the memory consumption of Fusion 360.
+An add-in that displays the memory consumption of Autodesk Fusion 360.
 
 ![MeMoryUsed palette](./resources/fusion-360-memory-used-palette.png)
 
