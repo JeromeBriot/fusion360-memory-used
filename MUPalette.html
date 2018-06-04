@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta name="description" content="Panel content of the 'Memory used' add-in for Fusion 360">
+	<meta name="author" content="Jerome Briot">
+	<link rel="stylesheet" type="text/css" href="MUStyle.css">
+	<script type="text/javascript" src="MUScript.js"></script>	
+  </head>
+  <body>
+	<table>
+	  <tr>	
+	    <th>Min</th>
+	    <th>Current</th>
+	    <th>Max</th>
+	  </tr>
+	  <tr>
+	    <td id='mem_min'></td>
+	    <td id='mem_cur'></td>
+	    <td id='mem_max'></td>
+	  </tr>
+	</table>
+	<div id="input">
+	<small>
+	  <input type="radio" name="radio" value="radio" id="radioGB">
+	  <label for="radioGB">GB</label>
+	  <input type="radio" name="radio" value="radio" id="radioMB" checked>
+	  <label for="radioMB">MB</label>
+	  <input type="radio" name="radio" value="radio" id="radioKB">
+	  <label for="radioKB">KB</label>
+	  </small>
+	</div>
+	<div id="help">
+	  <small>
+	    <a href="mailto:jbtechlab@gmail.com?subject=Fusion 360 - Memory Used Add-in">Need help?</a>
+	  </small>	
+	</div>
+  </body>  
+</html>

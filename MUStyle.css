@@ -1,0 +1,47 @@
+body {
+  background-color: #dddddd;
+}
+
+#input {
+  float: left;
+  text-align:center;
+  padding-left: 5px;
+}
+
+#help {
+  text-align:right;
+  padding-right: 5px;
+}
+
+/* https://www.webcodegeeks.com/css/css-table-design-example/ */
+
+table {	
+  width: 100%;
+  margin: 10px auto;
+  border-collapse:collapse;
+}	
+
+td {							/* removed the border from the table data rows  */
+  text-align: center;     
+  width: 10em;					
+  padding: 1em;
+}		
+
+th {							  /* removed the border from the table heading row  */
+  text-align: center;					
+  padding: 1em;
+  background-color: #30b27f;	     /* added a red background color to the heading cells  */
+  color: white;
+}			      /* added a white font color to the heading text */
+
+tr {	
+  height: 1em;
+}
+
+table tr:nth-child(even) {		      /* added all even rows a #eee color  */
+  background-color: #f9f9f9;
+}
+
+table tr:nth-child(odd) {		     /* added all odd rows a #fff color  */
+  background-color:#fff;
+}

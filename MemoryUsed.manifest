@@ -1,0 +1,13 @@
+{
+	"autodeskProduct":	"Fusion360",
+	"type":	"addin",
+	"id":	"1746810e-092b-4aa8-bb94-a151952e9874",
+	"author":	"Jerome Briot",
+	"description":	{
+		"":	"Display memory used by Fusion 360"
+	},
+	"version":	"0.2.0",
+	"runOnStartup":	false,
+	"supportedOS":	"windows|mac",
+	"editEnabled":	true
+}
