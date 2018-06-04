@@ -142,7 +142,7 @@ def run(context):
 
         ctrl = qatRToolbar.controls.addCommand(showPaletteCmdDef, 'HealthStatusCommand', False)
 
-        palette = ui.palettes.add('MemoryUsedPalette', 'Memory used', 'MUPalette.html', False, True, True, 300, 215)
+        palette = ui.palettes.add('MemoryUsedPalette', 'Memory used', 'MemoryUsed.html', False, True, True, 300, 215)
         palette.setPosition(400,400)
         palette.isVisible = False
 
