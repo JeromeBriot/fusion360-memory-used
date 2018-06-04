@@ -5,7 +5,7 @@ An add-in that displays the memory consumption of Fusion 360.
 
 ## Installation
 
-Download and install the free GitHub2Fusion360 add-in ([Windows](https://apps.autodesk.com/FUSION/fr/Detail/Index?id=789800822168335025&appLang=en&os=Win64) or [Mac](https://apps.autodesk.com/FUSION/fr/Detail/Index?id=789800822168335025&os=Mac&appLang=en)) available on the Autodesk App Store.
+Download and install the GitHub2Fusion360 add-in ([Windows](https://apps.autodesk.com/FUSION/fr/Detail/Index?id=789800822168335025&appLang=en&os=Win64) or [Mac](https://apps.autodesk.com/FUSION/fr/Detail/Index?id=789800822168335025&os=Mac&appLang=en)) available for free on the Autodesk App Store.
 
 Run the GitHub2Fusion360 add-in in Fusion 360 and copy/paste the URL of the repo: [https://github.com/JeromeBriot/fusion360-memory-used/](https://github.com/JeromeBriot/fusion360-memory-used/)
 
