@@ -24,4 +24,4 @@ The add-in is based on the [psutil](https://pypi.org/project/psutil/) library (p
 The monitoring is paused if the data panel is opened in Fusion 360. This is due to a bug that has been reported: [custom event + palette.sendInfoToHTML + data panel = Fusion 360 frozen](https://forums.autodesk.com/t5/fusion-360-api-and-scripts/custom-event-palette-sendinfotohtml-data-panel-fusion-360-frozen/m-p/7957599).
 
 ## License
-Codes are licensed under the terms of the BSD-2-Clause License. Please see the license.txt file for full details.
+Codes are licensed under the terms of the BSD-2-Clause License. Please see the License.txt file for full details.
