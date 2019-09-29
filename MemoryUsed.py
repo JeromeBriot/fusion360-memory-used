@@ -38,6 +38,7 @@ class ThreadEventHandler(adsk.core.CustomEventHandler):
         global palette
         global process
         global mem_max, mem_min
+        global customEvent, handlers, stopFlag, app, myCustomEvent
 
         try:
 
@@ -56,6 +57,11 @@ class ThreadEventHandler(adsk.core.CustomEventHandler):
         except:
             if ui:
                 ui.messageBox('Failed:\n{}'.format(traceback.format_exc()), this_addin_name, 0, 0)
+
+            if handlers.count:
+                customEvent.remove(handlers[0])
+            stopFlag.set()
+            app.unregisterCustomEvent(myCustomEvent)
 
 
 # The class for the new thread.
