@@ -26,7 +26,7 @@ myCustomEvent = 'MyCustomEventId'
 customEvent = None
 
 this_addin_name = 'MemoryUsed'
-this_addin_version = '0.2.1'
+this_addin_version = '0.3.0'
 this_addin_author = 'Jerome Briot'
 this_addin_contact = 'jbtechlab@gmail.com'
 
