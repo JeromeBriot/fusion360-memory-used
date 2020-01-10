@@ -38,7 +38,7 @@ class ThreadEventHandler(adsk.core.CustomEventHandler):
         global palette
         global process
         global mem_max, mem_min
-        global customEvent, handlers, stopFlag, app, myCustomEvent
+        # global customEvent, handlers, stopFlag, app, myCustomEvent
 
         try:
 
@@ -58,10 +58,10 @@ class ThreadEventHandler(adsk.core.CustomEventHandler):
             if ui:
                 ui.messageBox('Failed:\n{}'.format(traceback.format_exc()), this_addin_name, 0, 0)
 
-            if handlers.count:
-                customEvent.remove(handlers[0])
-            stopFlag.set()
-            app.unregisterCustomEvent(myCustomEvent)
+            # if handlers.count:
+                # customEvent.remove(handlers[0])
+            # stopFlag.set()
+            # app.unregisterCustomEvent(myCustomEvent)
 
 
 # The class for the new thread.
@@ -103,6 +103,7 @@ class ShowPaletteCommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
     def __init__(self):
         super().__init__()
     def notify(self, args):
+        global handlers
         try:
             command = args.command
             onExecute = ShowPaletteCommandExecuteHandler()
@@ -121,6 +122,17 @@ def run(context):
         app = adsk.core.Application.get()
         ui  = app.userInterface
 
+        # Register the custom event and connect the handler.
+        customEvent = app.registerCustomEvent(myCustomEvent)
+        onThreadEvent = ThreadEventHandler()
+        customEvent.add(onThreadEvent)
+        handlers.append(onThreadEvent)
+
+        # Create a new thread for the other processing.
+        stopFlag = threading.Event()
+        myThread = MyThread(stopFlag)
+        myThread.start()
+
         qatRToolbar = ui.toolbars.itemById('QATRight')
 
         showPaletteCmdDef = ui.commandDefinitions.addButtonDefinition('showMemoryMonitor', 'Show memory monitor', 'Display memory used by Fusion 360', './resources')
@@ -137,17 +149,6 @@ def run(context):
         palette.isVisible = False
 
         process = psutil.Process()
-
-        # Register the custom event and connect the handler.
-        customEvent = app.registerCustomEvent(myCustomEvent)
-        onThreadEvent = ThreadEventHandler()
-        customEvent.add(onThreadEvent)
-        handlers.append(onThreadEvent)
-
-        # Create a new thread for the other processing.
-        stopFlag = threading.Event()
-        myThread = MyThread(stopFlag)
-        myThread.start()
 
     except:
         if ui:
