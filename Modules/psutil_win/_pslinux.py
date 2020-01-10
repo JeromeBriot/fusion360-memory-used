@@ -25,8 +25,8 @@ from . import _common
 from . import _psposix
 from . import _psutil_linux as cext
 from . import _psutil_posix as cext_posix
-from ._common import decode
-from ._common import get_procfs_path
+from ._common import ENCODING
+from ._common import ENCODING_ERRS
 from ._common import isfile_strict
 from ._common import memoize
 from ._common import memoize_when_activated
@@ -41,7 +41,11 @@ from ._common import supports_ipv6
 from ._common import usage_percent
 from ._compat import b
 from ._compat import basestring
+from ._compat import long
 from ._compat import PY3
+from ._exceptions import AccessDenied
+from ._exceptions import NoSuchProcess
+from ._exceptions import ZombieProcess
 
 if sys.version_info >= (3, 4):
     import enum
@@ -157,13 +161,6 @@ TCP_STATUSES = {
     "0B": _common.CONN_CLOSING
 }
 
-# These objects get set on "import psutil" from the __init__.py
-# file, see: https://github.com/giampaolo/psutil/issues/1402
-NoSuchProcess = None
-ZombieProcess = None
-AccessDenied = None
-TimeoutExpired = None
-
 
 # =====================================================================
 # --- named tuples
@@ -205,6 +202,19 @@ pio = namedtuple('pio', ['read_count', 'write_count',
 # =====================================================================
 # --- utils
 # =====================================================================
+
+
+if PY3:
+    def decode(s):
+        return s.decode(encoding=ENCODING, errors=ENCODING_ERRS)
+else:
+    def decode(s):
+        return s
+
+
+def get_procfs_path():
+    """Return updated psutil.PROCFS_PATH constant."""
+    return sys.modules['psutil'].PROCFS_PATH
 
 
 def readlink(path):
@@ -613,17 +623,6 @@ def cpu_count_logical():
 
 def cpu_count_physical():
     """Return the number of physical cores in the system."""
-    # Method #1
-    core_ids = set()
-    for path in glob.glob(
-            "/sys/devices/system/cpu/cpu[0-9]*/topology/core_id"):
-        with open_binary(path) as f:
-            core_ids.add(int(f.read()))
-    result = len(core_ids)
-    if result != 0:
-        return result
-
-    # Method #2
     mapping = {}
     current_info = {}
     with open_binary('%s/cpuinfo' % get_procfs_path()) as f:
@@ -643,8 +642,8 @@ def cpu_count_physical():
                     key, value = line.split(b'\t:', 1)
                     current_info[key] = int(value)
 
-    result = sum(mapping.values())
-    return result or None  # mimic os.cpu_count()
+    # mimic os.cpu_count()
+    return sum(mapping.values()) or None
 
 
 def cpu_stats():
@@ -668,26 +667,30 @@ def cpu_stats():
         ctx_switches, interrupts, soft_interrupts, syscalls)
 
 
-if os.path.exists("/sys/devices/system/cpu/cpufreq/policy0") or \
+if os.path.exists("/sys/devices/system/cpu/cpufreq") or \
         os.path.exists("/sys/devices/system/cpu/cpu0/cpufreq"):
     def cpu_freq():
         """Return frequency metrics for all CPUs.
         Contrarily to other OSes, Linux updates these values in
         real-time.
         """
-        def get_path(num):
-            for p in ("/sys/devices/system/cpu/cpufreq/policy%s" % num,
-                      "/sys/devices/system/cpu/cpu%s/cpufreq" % num):
-                if os.path.exists(p):
-                    return p
-
+        # scaling_* files seem preferable to cpuinfo_*, see:
+        # http://unix.stackexchange.com/a/87537/168884
         ret = []
-        for n in range(cpu_count_logical()):
-            path = get_path(n)
-            if not path:
-                continue
+        ls = glob.glob("/sys/devices/system/cpu/cpufreq/policy*")
+        if ls:
+            # Sort the list so that '10' comes after '2'. This should
+            # ensure the CPU order is consistent with other CPU functions
+            # having a 'percpu' argument and returning results for multiple
+            # CPUs (cpu_times(), cpu_percent(), cpu_times_percent()).
+            ls.sort(key=lambda x: int(os.path.basename(x)[6:]))
+        else:
+            # https://github.com/giampaolo/psutil/issues/981
+            ls = glob.glob("/sys/devices/system/cpu/cpu[0-9]*/cpufreq")
+            ls.sort(key=lambda x: int(re.search('[0-9]+', x).group(0)))
 
-            pjoin = os.path.join
+        pjoin = os.path.join
+        for path in ls:
             curr = cat(pjoin(path, "scaling_cur_freq"), fallback=None)
             if curr is None:
                 # Likely an old RedHat, see:
@@ -712,14 +715,8 @@ elif os.path.exists("/proc/cpuinfo"):
             for line in f:
                 if line.lower().startswith(b'cpu mhz'):
                     key, value = line.split(b'\t:', 1)
-                    ret.append(_common.scpufreq(float(value), 0., 0.))
+                    ret.append(_common.scpufreq(float(value), None, None))
         return ret
-
-else:
-    def cpu_freq():
-        """Dummy implementation when none of the above files are present.
-        """
-        return []
 
 
 # =====================================================================
@@ -1063,8 +1060,6 @@ def disk_io_counters(perdisk=False):
         # ...unless (Linux 2.6) the line refers to a partition instead
         # of a disk, in which case the line has less fields (7):
         # "3    1   hda1 8 8 8 8"
-        # 4.18+ has 4 fields added:
-        # "3    0   hda 8 8 8 8 8 8 8 8 8 8 8 0 0 0 0"
         # See:
         # https://www.kernel.org/doc/Documentation/iostats.txt
         # https://www.kernel.org/doc/Documentation/ABI/testing/procfs-diskstats
@@ -1079,7 +1074,7 @@ def disk_io_counters(perdisk=False):
                 reads = int(fields[2])
                 (reads_merged, rbytes, rtime, writes, writes_merged,
                     wbytes, wtime, _, busy_time, _) = map(int, fields[4:14])
-            elif flen == 14 or flen == 18:
+            elif flen == 14:
                 # Linux 2.6+, line referring to a disk
                 name = fields[2]
                 (reads, reads_merged, rbytes, rtime, writes, writes_merged,
@@ -1158,13 +1153,13 @@ def disk_partitions(all=False):
                     fstypes.add("zfs")
 
     # See: https://github.com/giampaolo/psutil/issues/1307
-    if procfs_path == "/proc" and os.path.isfile('/etc/mtab'):
-        mounts_path = os.path.realpath("/etc/mtab")
+    if procfs_path == "/proc":
+        mtab_path = os.path.realpath("/etc/mtab")
     else:
-        mounts_path = os.path.realpath("%s/self/mounts" % procfs_path)
+        mtab_path = os.path.realpath("%s/self/mounts" % procfs_path)
 
     retlist = []
-    partitions = cext.disk_partitions(mounts_path)
+    partitions = cext.disk_partitions(mtab_path)
     for partition in partitions:
         device, mountpoint, fstype, opts = partition
         if device == 'none':
@@ -1283,7 +1278,7 @@ def sensors_temperatures():
 
             ret[unit_name].append(('', current, high, critical))
 
-    return dict(ret)
+    return ret
 
 
 def sensors_fans():
@@ -1531,7 +1526,7 @@ def wrap_exceptions(fun):
 class Process(object):
     """Linux process implementation."""
 
-    __slots__ = ["pid", "_name", "_ppid", "_procfs_path", "_cache"]
+    __slots__ = ["pid", "_name", "_ppid", "_procfs_path"]
 
     def __init__(self, pid):
         self.pid = pid
@@ -1539,20 +1534,13 @@ class Process(object):
         self._ppid = None
         self._procfs_path = get_procfs_path()
 
-    def _assert_alive(self):
-        """Raise NSP if the process disappeared on us."""
-        # For those C function who do not raise NSP, possibly returning
-        # incorrect or incomplete result.
-        os.stat('%s/%s' % (self._procfs_path, self.pid))
-
-    @wrap_exceptions
     @memoize_when_activated
     def _parse_stat_file(self):
-        """Parse /proc/{pid}/stat file and return a dict with various
-        process info.
+        """Parse /proc/{pid}/stat file. Return a list of fields where
+        process name is in position 0.
         Using "man proc" as a reference: where "man proc" refers to
-        position N always substract 3 (e.g ppid position 4 in
-        'man proc' == position 1 in here).
+        position N, always substract 2 (e.g starttime pos 22 in
+        'man proc' == pos 20 in the list returned here).
         The return value is cached in case oneshot() ctx manager is
         in use.
         """
@@ -1563,23 +1551,9 @@ class Process(object):
         # the first occurrence of "(" and the last occurence of ")".
         rpar = data.rfind(b')')
         name = data[data.find(b'(') + 1:rpar]
-        fields = data[rpar + 2:].split()
+        others = data[rpar + 2:].split()
+        return [name] + others
 
-        ret = {}
-        ret['name'] = name
-        ret['status'] = fields[0]
-        ret['ppid'] = fields[1]
-        ret['ttynr'] = fields[4]
-        ret['utime'] = fields[11]
-        ret['stime'] = fields[12]
-        ret['children_utime'] = fields[13]
-        ret['children_stime'] = fields[14]
-        ret['create_time'] = fields[19]
-        ret['cpu_num'] = fields[36]
-
-        return ret
-
-    @wrap_exceptions
     @memoize_when_activated
     def _read_status_file(self):
         """Read /proc/{pid}/stat file and return its content.
@@ -1589,7 +1563,6 @@ class Process(object):
         with open_binary("%s/%s/status" % (self._procfs_path, self.pid)) as f:
             return f.read()
 
-    @wrap_exceptions
     @memoize_when_activated
     def _read_smaps_file(self):
         with open_binary("%s/%s/smaps" % (self._procfs_path, self.pid),
@@ -1597,18 +1570,18 @@ class Process(object):
             return f.read().strip()
 
     def oneshot_enter(self):
-        self._parse_stat_file.cache_activate(self)
-        self._read_status_file.cache_activate(self)
-        self._read_smaps_file.cache_activate(self)
+        self._parse_stat_file.cache_activate()
+        self._read_status_file.cache_activate()
+        self._read_smaps_file.cache_activate()
 
     def oneshot_exit(self):
-        self._parse_stat_file.cache_deactivate(self)
-        self._read_status_file.cache_deactivate(self)
-        self._read_smaps_file.cache_deactivate(self)
+        self._parse_stat_file.cache_deactivate()
+        self._read_status_file.cache_deactivate()
+        self._read_smaps_file.cache_deactivate()
 
     @wrap_exceptions
     def name(self):
-        name = self._parse_stat_file()['name']
+        name = self._parse_stat_file()[0]
         if PY3:
             name = decode(name)
         # XXX - gets changed later and probably needs refactoring
@@ -1650,7 +1623,7 @@ class Process(object):
         sep = '\x00' if data.endswith('\x00') else ' '
         if data.endswith(sep):
             data = data[:-1]
-        return data.split(sep)
+        return [x for x in data.split(sep)]
 
     @wrap_exceptions
     def environ(self):
@@ -1660,14 +1633,13 @@ class Process(object):
 
     @wrap_exceptions
     def terminal(self):
-        tty_nr = int(self._parse_stat_file()['ttynr'])
+        tty_nr = int(self._parse_stat_file()[5])
         tmap = _psposix.get_terminal_map()
         try:
             return tmap[tty_nr]
         except KeyError:
             return None
 
-    # May not be available on old kernels.
     if os.path.exists('/proc/%s/io' % os.getpid()):
         @wrap_exceptions
         def io_counters(self):
@@ -1678,41 +1650,36 @@ class Process(object):
                     # https://github.com/giampaolo/psutil/issues/1004
                     line = line.strip()
                     if line:
-                        try:
-                            name, value = line.split(b': ')
-                        except ValueError:
-                            # https://github.com/giampaolo/psutil/issues/1004
-                            continue
-                        else:
-                            fields[name] = int(value)
+                        name, value = line.split(b': ')
+                        fields[name] = int(value)
             if not fields:
                 raise RuntimeError("%s file was empty" % fname)
-            try:
-                return pio(
-                    fields[b'syscr'],  # read syscalls
-                    fields[b'syscw'],  # write syscalls
-                    fields[b'read_bytes'],  # read bytes
-                    fields[b'write_bytes'],  # write bytes
-                    fields[b'rchar'],  # read chars
-                    fields[b'wchar'],  # write chars
-                )
-            except KeyError as err:
-                raise ValueError("%r field was not found in %s; found fields "
-                                 "are %r" % (err[0], fname, fields))
+            return pio(
+                fields[b'syscr'],  # read syscalls
+                fields[b'syscw'],  # write syscalls
+                fields[b'read_bytes'],  # read bytes
+                fields[b'write_bytes'],  # write bytes
+                fields[b'rchar'],  # read chars
+                fields[b'wchar'],  # write chars
+            )
+    else:
+        def io_counters(self):
+            raise NotImplementedError("couldn't find /proc/%s/io (kernel "
+                                      "too old?)" % self.pid)
 
     @wrap_exceptions
     def cpu_times(self):
         values = self._parse_stat_file()
-        utime = float(values['utime']) / CLOCK_TICKS
-        stime = float(values['stime']) / CLOCK_TICKS
-        children_utime = float(values['children_utime']) / CLOCK_TICKS
-        children_stime = float(values['children_stime']) / CLOCK_TICKS
+        utime = float(values[12]) / CLOCK_TICKS
+        stime = float(values[13]) / CLOCK_TICKS
+        children_utime = float(values[14]) / CLOCK_TICKS
+        children_stime = float(values[15]) / CLOCK_TICKS
         return _common.pcputimes(utime, stime, children_utime, children_stime)
 
     @wrap_exceptions
     def cpu_num(self):
         """What CPU the process is on."""
-        return int(self._parse_stat_file()['cpu_num'])
+        return int(self._parse_stat_file()[37])
 
     @wrap_exceptions
     def wait(self, timeout=None):
@@ -1720,14 +1687,14 @@ class Process(object):
 
     @wrap_exceptions
     def create_time(self):
-        ctime = float(self._parse_stat_file()['create_time'])
+        values = self._parse_stat_file()
         # According to documentation, starttime is in field 21 and the
         # unit is jiffies (clock ticks).
         # We first divide it for clock ticks and then add uptime returning
         # seconds since the epoch, in UTC.
         # Also use cached value if available.
         bt = BOOT_TIME or boot_time()
-        return (ctime / CLOCK_TICKS) + bt
+        return (float(values[20]) / CLOCK_TICKS) + bt
 
     @wrap_exceptions
     def memory_info(self):
@@ -1789,9 +1756,6 @@ class Process(object):
             """Return process's mapped memory regions as a list of named
             tuples. Fields are explained in 'man proc'; here is an updated
             (Apr 2012) version: http://goo.gl/fmebo
-
-            /proc/{PID}/smaps does not exist on kernels < 2.6.14 or if
-            CONFIG_MMU kernel configuration option is not enabled.
             """
             def get_blocks(lines, current_block):
                 data = {}
@@ -1851,6 +1815,13 @@ class Process(object):
                     data.get(b'Swap:', 0)
                 ))
             return ls
+
+    else:  # pragma: no cover
+        def memory_maps(self):
+            raise NotImplementedError(
+                "/proc/%s/smaps does not exist on kernels < 2.6.14 or "
+                "if CONFIG_MMU kernel configuration option is not "
+                "enabled." % self.pid)
 
     @wrap_exceptions
     def cwd(self):
@@ -1914,7 +1885,8 @@ class Process(object):
             ntuple = _common.pthread(int(thread_id), utime, stime)
             retlist.append(ntuple)
         if hit_enoent:
-            self._assert_alive()
+            # raise NSP if the process disappeared on us
+            os.stat('%s/%s' % (self._procfs_path, self.pid))
         return retlist
 
     @wrap_exceptions
@@ -1975,12 +1947,35 @@ class Process(object):
 
         @wrap_exceptions
         def ionice_set(self, ioclass, value):
-            if value is None:
+            if value is not None:
+                if not PY3 and not isinstance(value, (int, long)):
+                    msg = "value argument is not an integer (gor %r)" % value
+                    raise TypeError(msg)
+                if not 0 <= value <= 7:
+                    raise ValueError(
+                        "value argument range expected is between 0 and 7")
+
+            if ioclass in (IOPRIO_CLASS_NONE, None):
+                if value:
+                    msg = "can't specify value with IOPRIO_CLASS_NONE " \
+                          "(got %r)" % value
+                    raise ValueError(msg)
+                ioclass = IOPRIO_CLASS_NONE
                 value = 0
-            if value and ioclass in (IOPRIO_CLASS_IDLE, IOPRIO_CLASS_NONE):
-                raise ValueError("%r ioclass accepts no value" % ioclass)
-            if value < 0 or value > 7:
-                raise ValueError("value not in 0-7 range")
+            elif ioclass == IOPRIO_CLASS_IDLE:
+                if value:
+                    msg = "can't specify value with IOPRIO_CLASS_IDLE " \
+                          "(got %r)" % value
+                    raise ValueError(msg)
+                value = 0
+            elif ioclass in (IOPRIO_CLASS_RT, IOPRIO_CLASS_BE):
+                if value is None:
+                    # TODO: add comment explaining why this is 4 (?)
+                    value = 4
+            else:
+                # otherwise we would get OSError(EVINAL)
+                raise ValueError("invalid ioclass argument %r" % ioclass)
+
             return cext.proc_ioprio_set(self.pid, ioclass, value)
 
     if HAS_PRLIMIT:
@@ -2014,7 +2009,7 @@ class Process(object):
 
     @wrap_exceptions
     def status(self):
-        letter = self._parse_stat_file()['status']
+        letter = self._parse_stat_file()[1]
         if PY3:
             letter = letter.decode()
         # XXX is '?' legit? (we're not supposed to return it anyway)
@@ -2054,8 +2049,9 @@ class Process(object):
                             flags = int(f.readline().split()[1], 8)
                     except IOError as err:
                         if err.errno == errno.ENOENT:
-                            # fd gone in the meantime; process may
-                            # still be alive
+                            # fd gone in the meantime; does not
+                            # necessarily mean the process disappeared
+                            # on us.
                             hit_enoent = True
                         else:
                             raise
@@ -2065,13 +2061,15 @@ class Process(object):
                             path, int(fd), int(pos), mode, flags)
                         retlist.append(ntuple)
         if hit_enoent:
-            self._assert_alive()
+            # raise NSP if the process disappeared on us
+            os.stat('%s/%s' % (self._procfs_path, self.pid))
         return retlist
 
     @wrap_exceptions
     def connections(self, kind='inet'):
         ret = _connections.retrieve(kind, self.pid)
-        self._assert_alive()
+        # raise NSP if the process disappeared on us
+        os.stat('%s/%s' % (self._procfs_path, self.pid))
         return ret
 
     @wrap_exceptions
@@ -2080,7 +2078,7 @@ class Process(object):
 
     @wrap_exceptions
     def ppid(self):
-        return int(self._parse_stat_file()['ppid'])
+        return int(self._parse_stat_file()[2])
 
     @wrap_exceptions
     def uids(self, _uids_re=re.compile(br'Uid:\t(\d+)\t(\d+)\t(\d+)')):

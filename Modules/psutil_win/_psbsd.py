@@ -11,7 +11,6 @@ import os
 import xml.etree.ElementTree as ET
 from collections import namedtuple
 from socket import AF_INET
-from collections import defaultdict
 
 from . import _common
 from . import _psposix
@@ -28,6 +27,9 @@ from ._common import sockfam_to_enum
 from ._common import socktype_to_enum
 from ._common import usage_percent
 from ._compat import which
+from ._exceptions import AccessDenied
+from ._exceptions import NoSuchProcess
+from ._exceptions import ZombieProcess
 
 __extra__all__ = []
 
@@ -133,13 +135,6 @@ kinfo_proc_map = dict(
     cpunum=23,
     name=24,
 )
-
-# These objects get set on "import psutil" from the __init__.py
-# file, see: https://github.com/giampaolo/psutil/issues/1402
-NoSuchProcess = None
-ZombieProcess = None
-AccessDenied = None
-TimeoutExpired = None
 
 
 # =====================================================================
@@ -442,47 +437,6 @@ if FREEBSD:
             secsleft = minsleft * 60
         return _common.sbattery(percent, secsleft, power_plugged)
 
-    def sensors_temperatures():
-        "Return CPU cores temperatures if available, else an empty dict."
-        ret = defaultdict(list)
-        num_cpus = cpu_count_logical()
-        for cpu in range(num_cpus):
-            try:
-                current, high = cext.sensors_cpu_temperature(cpu)
-                if high <= 0:
-                    high = None
-                name = "Core %s" % cpu
-                ret["coretemp"].append(
-                    _common.shwtemp(name, current, high, high))
-            except NotImplementedError:
-                pass
-
-        return ret
-
-    def cpu_freq():
-        """Return frequency metrics for CPUs. As of Dec 2018 only
-        CPU 0 appears to be supported by FreeBSD and all other cores
-        match the frequency of CPU 0.
-        """
-        ret = []
-        num_cpus = cpu_count_logical()
-        for cpu in range(num_cpus):
-            try:
-                current, available_freq = cext.cpu_frequency(cpu)
-            except NotImplementedError:
-                continue
-            if available_freq:
-                try:
-                    min_freq = int(available_freq.split(" ")[-1].split("/")[0])
-                except(IndexError, ValueError):
-                    min_freq = None
-                try:
-                    max_freq = int(available_freq.split(" ")[0].split("/")[0])
-                except(IndexError, ValueError):
-                    max_freq = None
-            ret.append(_common.scpufreq(current, min_freq, max_freq))
-        return ret
-
 
 # =====================================================================
 #  --- other system functions
@@ -598,20 +552,13 @@ def wrap_exceptions_procfs(inst):
 class Process(object):
     """Wrapper class around underlying C implementation."""
 
-    __slots__ = ["pid", "_name", "_ppid", "_cache"]
+    __slots__ = ["pid", "_name", "_ppid"]
 
     def __init__(self, pid):
         self.pid = pid
         self._name = None
         self._ppid = None
 
-    def _assert_alive(self):
-        """Raise NSP if the process disappeared on us."""
-        # For those C function who do not raise NSP, possibly returning
-        # incorrect or incomplete result.
-        cext.proc_name(self.pid)
-
-    @wrap_exceptions
     @memoize_when_activated
     def oneshot(self):
         """Retrieves multiple process info in one shot as a raw tuple."""
@@ -620,10 +567,10 @@ class Process(object):
         return ret
 
     def oneshot_enter(self):
-        self.oneshot.cache_activate(self)
+        self.oneshot.cache_activate()
 
     def oneshot_exit(self):
-        self.oneshot.cache_deactivate(self)
+        self.oneshot.cache_deactivate()
 
     @wrap_exceptions
     def name(self):
@@ -758,7 +705,10 @@ class Process(object):
             ntuple = _common.pthread(thread_id, utime, stime)
             retlist.append(ntuple)
         if OPENBSD:
-            self._assert_alive()
+            # On OpenBSD the underlying C function does not raise NSP
+            # in case the process is gone (and the returned list may
+            # incomplete).
+            self.name()  # raise NSP if the process disappeared on us
         return retlist
 
     @wrap_exceptions
@@ -788,7 +738,10 @@ class Process(object):
                     type = socktype_to_enum(type)
                     nt = _common.pconn(fd, fam, type, laddr, raddr, status)
                     ret.add(nt)
-            self._assert_alive()
+            # On NetBSD the underlying C function does not raise NSP
+            # in case the process is gone (and the returned list may
+            # incomplete).
+            self.name()  # raise NSP if the process disappeared on us
             return list(ret)
 
         families, types = conn_tmap[kind]
@@ -807,7 +760,10 @@ class Process(object):
             nt = _common.pconn(fd, fam, type, laddr, raddr, status)
             ret.append(nt)
         if OPENBSD:
-            self._assert_alive()
+            # On OpenBSD the underlying C function does not raise NSP
+            # in case the process is gone (and the returned list may
+            # incomplete).
+            self.name()  # raise NSP if the process disappeared on us
         return ret
 
     @wrap_exceptions
@@ -883,7 +839,9 @@ class Process(object):
             """Return the number of file descriptors opened by this process."""
             ret = cext.proc_num_fds(self.pid)
             if NETBSD:
-                self._assert_alive()
+                # On NetBSD the underlying C function does not raise NSP
+                # in case the process is gone.
+                self.name()  # raise NSP if the process disappeared on us
             return ret
     else:
         num_fds = _not_implemented

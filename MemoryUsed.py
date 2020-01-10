@@ -26,7 +26,7 @@ myCustomEvent = 'MyCustomEventId'
 customEvent = None
 
 this_addin_name = 'MemoryUsed'
-this_addin_version = '0.3.0'
+this_addin_version = '0.4.0'
 this_addin_author = 'Jerome Briot'
 this_addin_contact = 'jbtechlab@gmail.com'
 
@@ -75,11 +75,7 @@ class MyThread(threading.Thread):
 
         # Every second fire a custom event, passing a random number.
         while not self.stopped.wait(1):
-            if app.data.isDataPanelVisible == False:
-                palette.name = 'Memory used'
-                app.fireCustomEvent(myCustomEvent)
-            else:
-                palette.name = 'Memory used - Paused'
+            app.fireCustomEvent(myCustomEvent)
 
 # Event handler for the commandExecuted event.
 class ShowPaletteCommandExecuteHandler(adsk.core.CommandEventHandler):
@@ -119,23 +115,11 @@ def run(context):
 
     global ui, app, palette, ctrl
     global process
+    global customEvent, stopFlag
 
     try:
         app = adsk.core.Application.get()
         ui  = app.userInterface
-
-        # Register the custom event and connect the handler.
-        global customEvent
-        customEvent = app.registerCustomEvent(myCustomEvent)
-        onThreadEvent = ThreadEventHandler()
-        customEvent.add(onThreadEvent)
-        handlers.append(onThreadEvent)
-
-        # Create a new thread for the other processing.
-        global stopFlag
-        stopFlag = threading.Event()
-        myThread = MyThread(stopFlag)
-        myThread.start()
 
         qatRToolbar = ui.toolbars.itemById('QATRight')
 
@@ -153,6 +137,17 @@ def run(context):
         palette.isVisible = False
 
         process = psutil.Process()
+
+        # Register the custom event and connect the handler.
+        customEvent = app.registerCustomEvent(myCustomEvent)
+        onThreadEvent = ThreadEventHandler()
+        customEvent.add(onThreadEvent)
+        handlers.append(onThreadEvent)
+
+        # Create a new thread for the other processing.
+        stopFlag = threading.Event()
+        myThread = MyThread(stopFlag)
+        myThread.start()
 
     except:
         if ui:

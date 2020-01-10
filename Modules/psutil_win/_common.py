@@ -64,7 +64,6 @@ __all__ = [
     'conn_tmap', 'deprecated_method', 'isfile_strict', 'memoize',
     'parse_environ_block', 'path_exists_strict', 'usage_percent',
     'supports_ipv6', 'sockfam_to_enum', 'socktype_to_enum', "wrap_numbers",
-    'bytes2human',
 ]
 
 
@@ -328,7 +327,7 @@ def memoize_when_activated(fun):
     1
     >>>
     >>> # activated
-    >>> foo.cache_activate(self)
+    >>> foo.cache_activate()
     >>> foo()
     1
     >>> foo()
@@ -337,30 +336,26 @@ def memoize_when_activated(fun):
     """
     @functools.wraps(fun)
     def wrapper(self):
-        try:
-            # case 1: we previously entered oneshot() ctx
-            ret = self._cache[fun]
-        except AttributeError:
-            # case 2: we never entered oneshot() ctx
+        if not wrapper.cache_activated:
             return fun(self)
-        except KeyError:
-            # case 3: we entered oneshot() ctx but there's no cache
-            # for this entry yet
-            ret = self._cache[fun] = fun(self)
-        return ret
+        else:
+            try:
+                ret = cache[fun]
+            except KeyError:
+                ret = cache[fun] = fun(self)
+            return ret
 
-    def cache_activate(proc):
-        """Activate cache. Expects a Process instance. Cache will be
-        stored as a "_cache" instance attribute."""
-        proc._cache = {}
+    def cache_activate():
+        """Activate cache."""
+        wrapper.cache_activated = True
 
-    def cache_deactivate(proc):
+    def cache_deactivate():
         """Deactivate and clear cache."""
-        try:
-            del proc._cache
-        except AttributeError:
-            pass
+        wrapper.cache_activated = False
+        cache.clear()
 
+    cache = {}
+    wrapper.cache_activated = False
     wrapper.cache_activate = cache_activate
     wrapper.cache_deactivate = cache_deactivate
     return wrapper
@@ -476,7 +471,7 @@ def deprecated_method(replacement):
 
         @functools.wraps(fun)
         def inner(self, *args, **kwargs):
-            warnings.warn(msg, category=DeprecationWarning, stacklevel=2)
+            warnings.warn(msg, category=FutureWarning, stacklevel=2)
             return getattr(self, replacement)(*args, **kwargs)
         return inner
     return outer
@@ -599,36 +594,3 @@ def open_text(fname, **kwargs):
         kwargs.setdefault('encoding', ENCODING)
         kwargs.setdefault('errors', ENCODING_ERRS)
     return open(fname, "rt", **kwargs)
-
-
-def bytes2human(n, format="%(value).1f%(symbol)s"):
-    """Used by various scripts. See:
-    http://goo.gl/zeJZl
-
-    >>> bytes2human(10000)
-    '9.8K'
-    >>> bytes2human(100001221)
-    '95.4M'
-    """
-    symbols = ('B', 'K', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y')
-    prefix = {}
-    for i, s in enumerate(symbols[1:]):
-        prefix[s] = 1 << (i + 1) * 10
-    for symbol in reversed(symbols[1:]):
-        if n >= prefix[symbol]:
-            value = float(n) / prefix[symbol]
-            return format % locals()
-    return format % dict(symbol=symbols[0], value=n)
-
-
-def get_procfs_path():
-    """Return updated psutil.PROCFS_PATH constant."""
-    return sys.modules['psutil'].PROCFS_PATH
-
-
-if PY3:
-    def decode(s):
-        return s.decode(encoding=ENCODING, errors=ENCODING_ERRS)
-else:
-    def decode(s):
-        return s
