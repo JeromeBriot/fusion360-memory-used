@@ -33,11 +33,11 @@ window.fusionJavaScriptHandler =
 		
 			obj = JSON.parse(data)
 			
-			val = parseInt(obj.min)/f;
+			val = parseInt(obj.min, 10)/f;
 			document.getElementById('mem_min').innerHTML = val.toFixed(numdec);
-			val = parseInt(obj.uss)/f;
+			val = parseInt(obj.uss, 10)/f;
 			document.getElementById('mem_cur').innerHTML = val.toFixed(numdec);
-			val = parseInt(obj.max)/f;
+			val = parseInt(obj.max, 10)/f;
 			document.getElementById('mem_max').innerHTML = val.toFixed(numdec);
 			
 		} 
