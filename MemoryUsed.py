@@ -80,7 +80,7 @@ class ShowPaletteCommandExecuteHandler(adsk.core.CommandEventHandler):
             if not palette:
                 palette = ui.palettes.add(thisAddinName + 'Palette', 'Memory used', 'MUPalette.html', True, True, True, 300, 215)
             else:
-                palette.isVisible = True
+                palette.isVisible = not(palette.isVisible)
 
         except:
             ui.messageBox('Command executed failed: {}'.format(traceback.format_exc()), thisAddinName, 0, 0)
