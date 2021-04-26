@@ -3,3 +3,4 @@
 /Modules/psutil_win/__pycache__
 /Modules/psutil_win/tests
 /.vscode
+.env
