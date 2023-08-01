@@ -3,12 +3,8 @@
 
 import adsk.core, adsk.fusion, adsk.cam, traceback
 import threading
-import platform
 
-if platform.system()=='Windows':
-    from .Modules import psutil_win as psutil
-else:
-    from .Modules import psutil_mac as psutil
+from .Modules import psutil
 
 app = adsk.core.Application.cast(None)
 ui = adsk.core.UserInterface.cast(None)
@@ -26,7 +22,7 @@ myCustomEvent = 'MyCustomEventId'
 customEvent = None
 
 thisAddinName = 'MemoryUsed'
-thisAddinVersion = '0.5.1'
+thisAddinVersion = '0.6.0'
 thisAddinAuthor = 'Jerome Briot'
 thisAddinContact = 'jbtechlab@gmail.com'
 
