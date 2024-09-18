@@ -2,3 +2,4 @@
 /Modules/psutil/tests
 /.vscode
 .env
+.DS_Store
