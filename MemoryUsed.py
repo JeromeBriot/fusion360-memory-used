@@ -22,7 +22,7 @@ myCustomEvent = 'MyCustomEventId'
 customEvent = None
 
 thisAddinName = 'MemoryUsed'
-thisAddinVersion = '0.7.0'
+thisAddinVersion = '0.8.0'
 thisAddinAuthor = 'Jerome Briot'
 thisAddinContact = 'jbtechlab@gmail.com'
 
@@ -74,7 +74,7 @@ class ShowPaletteCommandExecuteHandler(adsk.core.CommandEventHandler):
 
             palette = ui.palettes.itemById(thisAddinName + 'Palette')
             if not palette:
-                palette = ui.palettes.add(thisAddinName + 'Palette', 'Memory used', 'MUPalette.html', True, True, True, 300, 215)
+                palette = ui.palettes.add(thisAddinName + 'Palette', 'Memory used - ' + thisAddinVersion, 'MUPalette.html', True, True, True, 300, 215)
             else:
                 palette.isVisible = not(palette.isVisible)
 
