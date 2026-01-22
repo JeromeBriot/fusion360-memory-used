@@ -6,7 +6,7 @@
 	"description":	{
 		"":	"Display memory used by Fusion 360"
 	},
-	"version":	"0.8.0",
+	"version":	"0.9.0",
 	"runOnStartup":	true,
 	"supportedOS":	"windows|mac",
 	"editEnabled":	true
