@@ -21,3 +21,13 @@ The add-in is based on the [psutil](https://pypi.org/project/psutil/) library (p
 
 ## License
 Codes are licensed under the terms of the BSD-2-Clause License. Please see the License.txt file for full details.
+
+## Packaging a Fusion add-in release
+
+From the repository root, check out the release commit and run this command with Git (Bash or Git Bash). It packages the tracked runtime files under the folder name Fusion expects.
+
+```sh
+git archive --format=zip --prefix=MemoryUsed/ --output=MemoryUsed-universal.zip HEAD -- MemoryUsed.manifest MemoryUsed.py MUPalette.html MUScript.js MUStyle.css Modules resources License.txt
+```
+
+Upload `MemoryUsed-universal.zip` as an asset of a stable GitHub Release. Use a numeric tag such as `v0.9.1` matching the version in `MemoryUsed.manifest`.
